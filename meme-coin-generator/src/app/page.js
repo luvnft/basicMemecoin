@@ -1,8 +1,8 @@
-'use client'
+'use client';
 import { useState } from "react";
 import { ContractFactory, ethers } from "ethers";
-import tokenJson from "./token.json"
-require("dotenv").config()
+import tokenJson from "./token.json";
+require("dotenv").config();
 
 export default function Home() {
 
@@ -12,9 +12,9 @@ export default function Home() {
     decimals: 0,
     totalSupply: 0
   });
-  const [deploying, setDeploying] = useState(false)
-  const [deployment, setDeployment] = useState(undefined)
-  const [error, setError] = useState(false)
+  const [deploying, setDeploying] = useState(false);
+  const [deployment, setDeployment] = useState(undefined);
+  const [error, setError] = useState(false);
 
   const handleInputChange = e => {
     const { name, value } = e.target;
@@ -25,68 +25,66 @@ export default function Home() {
   }
 
   const deployToken = async () => {
-    console.log('deploy token')
-    console.log(tokenData)
+    console.log('deploy token');
+    console.log(tokenData);
 
     // 1. Connect to Metamask with Ethers
-    const provider = new ethers.BrowserProvider(window.ethereum);
-    const signer = await provider.getSigner();
+    const provider = new ethers.providers.Web3Provider(window.ethereum, "any");
+    await provider.send("eth_requestAccounts", []);
+    const signer = provider.getSigner();
     setDeploying(true);
     // App <=> Metamask <=> Blockchain
 
     // 2. Create the deployment transaction
-    const token = new ContractFactory(tokenJson.abi, tokenJson.bytecode)
+    const token = new ContractFactory(tokenJson.abi, tokenJson.bytecode, signer);
     const tx = await token.getDeployTransaction(
       tokenData.name,
       tokenData.ticker,
       tokenData.decimals,
-      ethers.parseUnits(tokenData.totalSupply.toString(), parseInt(tokenData.decimals))
+      ethers.utils.parseUnits(tokenData.totalSupply.toString(), parseInt(tokenData.decimals))
     );
-    const txRequest = {
-      data: tx.data
-    }
+
     // 3. Send the transaction
     let txReceipt;
-    try{
-      const txResponse = await signer.sendTransaction(txRequest)
+    try {
+      const txResponse = await signer.sendTransaction({ ...tx });
       txReceipt = await txResponse.wait();
       setDeploying(false);
-      setDeployment({hash: txReceipt.hash, gas: txReceipt.gas, address: txReceipt.contractAddress})
+      setDeployment({ hash: txReceipt.transactionHash, gas: txReceipt.gasUsed.toString(), address: txReceipt.contractAddress });
 
-    }catch(e){
+    } catch (e) {
       setDeploying(false);
       setError(true);
     }
 
-    // 4 . Verify the contract
-
-    const abiCoder = new ethers.AbiCoder();
-    const constructorArguements = abiCoder.encode(
+    // 4. Verify the contract
+    const abiCoder = new ethers.utils.AbiCoder();
+    const constructorArguments = abiCoder.encode(
       ["string", "string", "uint8", "uint256"],
       [tokenData.name, tokenData.ticker, tokenData.decimals, tokenData.totalSupply]
-    )
+    );
+
     const response = await fetch(
-      "//api-sepolia.etherscan.io/api",
+      `https://api.etherscan.io/api`,
       {
         method: "POST",
-        headers:{
+        headers: {
           'Accept': 'application/json',
           'Content-Type': 'application/json'
         },
-        body: {
+        body: JSON.stringify({
           apiKey: process.env.API_KEY,
-          module: 'contract',                             //Do not change
-          action: 'verifysourcecode',                     //Do not change
-          contractaddress: txReceipt.address,   //Contract Address starts with 0x...     
-          sourceCode: tokenJson.code,             //Contract Source Code (Flattened if necessary)           //solidity-single-file (default) or solidity-standard-json-input (for std-input-json-format support
-          contractname: "ERC20Token",         //ContractName (if codeformat=solidity-standard-json-input, then enter contractname as ex: erc20.sol:erc20)
-          compilerversion: tokenJson.compilerVersion,   // see https://basescan.org/solcversions for list of support versions
-          optimizationUsed: 0, //0 = No Optimization, 1 = Optimization used (applicable when codeformat=solidity-single-file)                                   //set to 200 as default unless otherwise  (applicable when codeformat=solidity-single-file)        
-          constructorArguements: constructorArguements,   //if applicable
-          evmversion: tokenJson.evmVersion,             //leave blank for compiler default, homestead, tangerineWhistle, spuriousDragon, byzantium, constantinople, petersburg, istanbul (applicable when codeformat=solidity-single-file)
-          licenseType: tokenJson.licenseType, 
-
-        }
+          module: 'contract',
+          action: 'verifysourcecode',
+          contractaddress: txReceipt.contractAddress,
+          sourceCode: tokenJson.code,
+          contractname: "ERC20Token",
+          compilerversion: tokenJson.compilerVersion,
+          optimizationUsed: 0,
+          constructorArguements: constructorArguments,
+          evmversion: tokenJson.evmVersion,
+          licenseType: tokenJson.licenseType,
+        })
       }
     );
   }
@@ -131,7 +129,7 @@ export default function Home() {
 
           {deployment && 
             <div className="alert alert-success mt-4 mb-0">
-              Congrats! The meme coin was deployed at <a href={`https://sepolia.basescan.org/tx/${deployment.hash}`} target="_blank">
+              Congrats! The meme coin was deployed at <a href={`https://etherscan.io/tx/${deployment.hash}`} target="_blank">
               {`${deployment.hash.substr(0, 20)}...`}
               </a>
             </div>
